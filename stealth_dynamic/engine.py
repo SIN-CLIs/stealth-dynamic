@@ -234,6 +234,22 @@ class DynamicSurveyEngine:
             }
         });
 
+        // 4.5 BUTTON-basierte Surveys (modern, kein input[type=radio])
+        if (acts.length === 0) {
+            document.querySelectorAll('button').forEach(btn => {
+                const t = btn.textContent.trim();
+                if (t && !t.includes('Weiter') && !t.includes('\u2192') && acts.length === 0) {
+                    btn.click(); acts.push('btn:' + t.substring(0,20));
+                    // Klicke Weiter nach kurzer Pause
+                    setTimeout(() => {
+                        document.querySelectorAll('button').forEach(b => {
+                            if (/weiter|\u2192/.test(b.textContent)) b.click();
+                        });
+                    }, 300);
+                }
+            });
+        }
+
         // 5. Weiter
         const fwd = document.getElementById('forwardbutton')
             || document.querySelector('input[type="submit"]:not([style*="-9000"])')
@@ -271,14 +287,21 @@ class DynamicSurveyEngine:
         return "AXRadioButton" in ax_md or "AXTextField" in ax_md
 
     def _get_cdp_ws(self):
-        """Liefert CDP WebSocket zum aktuellen Survey-Tab."""
+        """Liefert CDP WebSocket zum aktuellen Survey-Tab (nicht heypiggy)."""
         port = self.executor.cache.get_cdp_port()
         r = urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=5)
         targets = json.loads(r.read())
+        # Priority 1: Known survey platforms
         for t in targets:
-            if t.get("type") == "page" and "survey" in t.get("url","") or "toluna" in t.get("url",""):
+            if t.get("type") == "page":
+                url = t.get("url","")
+                if any(k in url for k in ["survey","toluna","samplicio","cint","civey","nfield","question","umfrage"]):
+                    return websocket.create_connection(t["webSocketDebuggerUrl"], suppress_origin=True, timeout=10)
+        # Priority 2: Any non-heypiggy page
+        for t in targets:
+            if t.get("type") == "page" and "heypiggy" not in t.get("url",""):
                 return websocket.create_connection(t["webSocketDebuggerUrl"], suppress_origin=True, timeout=10)
-        # Fallback: erster page target
+        # Fallback
         for t in targets:
             if t.get("type") == "page":
                 return websocket.create_connection(t["webSocketDebuggerUrl"], suppress_origin=True, timeout=10)
