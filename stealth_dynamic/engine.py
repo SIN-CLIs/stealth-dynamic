@@ -78,6 +78,31 @@ class DynamicSurveyEngine:
         try:
             ws = self._get_cdp_ws()
             persona_json = json.dumps(self.persona)
+
+            # ── SPA Detection: Framework erkennen + DOM-Stabilität warten ──
+            from .spa_detector import detect_framework, find_elements_script, wait_stable_dom_script
+            framework_info = detect_framework(ws)
+            fw = framework_info.get("framework", "unknown")
+            spa_frameworks = ("React", "Angular", "Vue", "Next.js", "Nuxt")
+
+            # Wenn SPA erkannt: MutationObserver warten + Framework-Selektoren nutzen
+            if fw in spa_frameworks:
+                logger.info("SPA detected: %s — using MutationObserver + framework selectors", fw)
+                # 1. Warte auf DOM-Stabilität
+                ws.send(json.dumps({"id":100,"method":"Runtime.evaluate","params":{"expression":wait_stable_dom_script(3000)}}))
+                ws.recv()
+                # 2. Finde Elemente via Framework-Selektoren
+                ws.send(json.dumps({"id":101,"method":"Runtime.evaluate","params":{"expression":find_elements_script(fw)}}))
+                elements = json.loads(ws.recv()).get("result",{}).get("result",{}).get("value",[])
+                visible = [e for e in elements if e.get("visible")]
+                if visible:
+                    # Baue Answer-Script aus den gefundenen Elementen
+                    answer = self._build_spa_answer(visible, fw)
+                    return {"success": True, "action": answer, "framework": fw, "elements_found": len(visible)}
+                # Fallback: keine sichtbaren Elemente via Framework
+                logger.info("SPA %s: no visible elements via framework selectors", fw)
+
+            # ── Universal Answer Script (Standard / Fallback) ──
             script = self._CDP_ANSWER_TEMPLATE.replace("__PERSONA__", persona_json)
             ws.send(json.dumps({"id":1,"method":"Runtime.evaluate","params":{"expression":script}}))
             resp = json.loads(ws.recv())
@@ -112,6 +137,30 @@ class DynamicSurveyEngine:
         except Exception as e:
             logger.error("CDP answer failed: %s", e)
             return {"success": False, "error": str(e)}
+
+    def _build_spa_answer(self, elements: list, framework: str) -> str:
+        """Baut Answer aus SPA-Elementen: klicke erste Option in jeder Gruppe."""
+        ws = None
+        try:
+            ws = self._get_cdp_ws()
+            parts = []
+            for el in elements:
+                if el.get("checked"): continue
+                tag, typ, idx, name = el.get("tag",""), el.get("type",""), el.get("x",""), el.get("name","")
+                if tag in ("INPUT",) and typ in ("radio", "checkbox"):
+                    selector = f'input[name="{name}"]'
+                    parts.append(f'document.querySelector(\'{selector}\')?.click()')
+                    break  # nur erstes pro Name
+            if parts:
+                script = "(()=>{" + ";".join(parts) + ";return 'spa_ok'})()"
+                ws.send(json.dumps({"id":1,"method":"Runtime.evaluate","params":{"expression":script}}))
+                result = json.loads(ws.recv()).get("result",{}).get("result",{}).get("value","?")
+                return f"spa:{result}"
+            return "spa:no_elements"
+        except Exception as e:
+            return f"spa:error:{e}"
+        finally:
+            if ws: ws.close()
 
     _CDP_ANSWER_TEMPLATE = r"""
     (() => {
