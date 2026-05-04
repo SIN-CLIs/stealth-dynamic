@@ -37,7 +37,18 @@ class QuestionResolver:
 
     def _answer_text(self, ax, router):
         m = re.search(r'AXTextField\s+"([^"]*)"', ax)
-        return {"action": "set_value", "value": "Standard", "placeholder": m.group(1) if m else ""}
+        val = "Standard"
+        ll = ax.lower()
+        p = self.persona
+        if "plz" in ll or "postleitzahl" in ll:
+            val = str(p.get("plz", "10115"))
+        elif "alter" in ll or "alter" in ll:
+            val = str(p.get("age", 42))
+        elif "stadt" in ll or "ort" in ll:
+            val = str(p.get("city", "Berlin"))
+        elif "name" in ll:
+            val = "Manfred Müller"
+        return {"action": "set_value", "value": val, "placeholder": m.group(1) if m else ""}
 
     def _answer_math(self, ax, router):
         return {"action": "solve_math", "model": router.route("solve_math")["name"]}
