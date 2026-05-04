@@ -107,38 +107,77 @@ class DynamicSurveyEngine:
             logger.error("CDP answer failed: %s", e)
             return {"success": False, "error": str(e)}
 
-    _CDP_ANSWER_TEMPLATE = """
+    _CDP_ANSWER_TEMPLATE = r"""
     (() => {
         const P = __PERSONA__;
+        const BODY = (document.body?.innerText || '').toLowerCase();
         let acts = [];
 
-        // 1. LEERE Textfelder persona-basiert füllen
+        // Hilfsfunktion: umgebenden Text eines Elements finden
+        function getContext(el) {
+            let ctx = (el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').toLowerCase();
+            let p = el;
+            for (let i = 0; i < 5; i++) {
+                p = p.parentElement;
+                if (!p) break;
+                ctx += ' ' + (p.textContent || '').substring(0, 80).toLowerCase();
+            }
+            return ctx + ' ' + BODY;
+        }
+
+        // Hilfsfunktion: Label-Text eines Radio/Checkbox-Elements finden
+        function getLabel(el) {
+            if (el.labels && el.labels.length > 0)
+                return (el.labels[0].textContent || '').trim().toLowerCase();
+            let next = el.nextElementSibling;
+            while (next && next.tagName === 'SPAN') {
+                const t = (next.textContent || '').trim().toLowerCase();
+                if (t) return t;
+                next = next.nextElementSibling;
+            }
+            if (el.previousElementSibling)
+                return (el.previousElementSibling.textContent || '').trim().toLowerCase();
+            // Tiefere Suche: parent text
+            const parentText = (el.parentElement?.textContent || '').trim().toLowerCase();
+            return parentText.substring(0, 40);
+        }
+
+        // 1. LEERE Textfelder persona-basiert füllen (mit Kontext-Analyse)
         document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"]').forEach(el => {
-            if (!el.value || el.value.trim() === '') {
-                const ctx = (el.parentElement?.textContent || el.getAttribute('placeholder') || el.ariaLabel || '').toLowerCase();
-                if (/plz|postleitzahl|zip/.test(ctx))
+            if (!el.value || el.value.trim() === '' || el.value === 'Test') {
+                const ctx = getContext(el);
+                if (/plz|postleitzahl|zip/.test(ctx)) {
                     el.value = P.plz || '10115';
-                else if (/alter|age|jahre|jahr/.test(ctx))
+                } else if (/alter|age|jahre|jahr/.test(ctx)) {
                     el.value = '' + (P.age || 42);
-                else if (/stadt|ort|wohnort|city/.test(ctx))
+                } else if (/stadt|ort|wohnort|city/.test(ctx)) {
                     el.value = P.city || 'Berlin';
-                else if (/bundesland|land/.test(ctx))
+                } else if (/bundesland/.test(ctx)) {
                     el.value = P.bundesland || 'Berlin';
-                else if (/vorname|first.*name/.test(ctx))
+                } else if (/vorname|first.?name/.test(ctx)) {
                     el.value = 'Manfred';
-                else if (/nachname|last.*name/.test(ctx))
-                    el.value = 'Müller';
-                else if (/strasse|adresse|street/.test(ctx))
-                    el.value = 'Hauptstraße 1';
-                else if (/haushalt|personen/.test(ctx))
+                } else if (/nachname|last.?name/.test(ctx)) {
+                    el.value = 'M\u00fcller';
+                } else if (/strasse|adresse|street/.test(ctx)) {
+                    el.value = 'Hauptstra\u00dfe 1';
+                } else if (/haushalt|personen/.test(ctx)) {
                     el.value = P.household || '2';
-                else if (/name/.test(ctx))
-                    el.value = 'Manfred';
-                else
+                } else {
                     el.value = '42';
+                }
                 el.dispatchEvent(new Event('input', {bubbles: true}));
                 el.dispatchEvent(new Event('change', {bubbles: true}));
                 acts.push('txt:' + (el.id || el.name));
+            }
+        });
+
+        // 2. Geschlecht persona-basiert
+        document.querySelectorAll('input[type="radio"]').forEach(el => {
+            const ctx = getContext(el);
+            if (/geschlecht|gender|sex/.test(ctx)) {
+                const lbl = getLabel(el);
+                if (P.gender === 'male' && /männlich|mann|male|herr/.test(lbl)) { el.click(); acts.push('gdr:m'); }
+                if (P.gender === 'female' && /weiblich|frau|female/.test(lbl)) { el.click(); acts.push('gdr:f'); }
             }
         });
 
@@ -155,7 +194,7 @@ class DynamicSurveyEngine:
             }
         });
 
-        // 3. UNBEANTWORTETE Radio-Gruppen (eine pro name)
+        // 3. UNBEANTWORTETE Radio-Gruppen
         const rGrp = {};
         document.querySelectorAll('input[type="radio"]').forEach(el => {
             const n = el.getAttribute('name') || el.id;
@@ -164,17 +203,17 @@ class DynamicSurveyEngine:
             if (el.checked) rGrp[n].checked = true;
         });
         Object.values(rGrp).forEach(g => {
-            if (!g.checked) {
-                // Wähle NICHT "keine Angabe" oder "nicht beantworten" wenn möglich
+            if (!g.checked && g.els.length > 0) {
+                // Erster nicht-"keine Angabe" option
                 for (const el of g.els) {
-                    const lbl = (el.labels?.[0]?.textContent || '').toLowerCase();
-                    if (!/nicht beantworten|keine angabe|weiß nicht|keine/.test(lbl) && !el.checked) {
+                    const lbl = getLabel(el);
+                    if (!/nicht beantworten|keine angabe|wei\u00df nicht|keine/i.test(lbl) && !el.checked) {
                         el.click(); acts.push('rad:' + (el.name || el.id)); return;
                     }
                 }
-                // Fallback: erste Option
+                // Fallback: erste option
                 for (const el of g.els) {
-                    if (!el.checked) { el.click(); acts.push('rad-fb:' + (el.name || el.id)); return; }
+                    if (!el.checked) { el.click(); acts.push('rad-fb'); return; }
                 }
             }
         });
