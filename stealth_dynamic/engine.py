@@ -6,8 +6,9 @@ from .flow_state import FlowStateMachine, SurveyState
 logger = logging.getLogger(__name__)
 
 DEFAULT_PERSONA = {
-    "gender": "male", "age": 42, "city": "Berlin", "plz": "10115",
-    "bundesland": "Berlin", "income": "mittel", "education": "Hochschule",
+    "gender": "male", "age": 42, "city": "Berlin", "plz": "10785",
+    "street": "Kurfürstenstraße 124", "bundesland": "Berlin",
+    "income": "mittel", "education": "Hochschule",
     "job": "Angestellter", "household": "2 Personen",
 }
 
