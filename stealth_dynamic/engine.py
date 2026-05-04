@@ -83,6 +83,11 @@ class DynamicSurveyEngine:
             resp = json.loads(ws.recv())
             result = resp.get("result",{}).get("result",{}).get("value","")
 
+            # Fast skip if incompatible platform (<1s detection)
+            if result == 'NO_ELEMENTS':
+                ws.close()
+                return {"success": False, "action": "incompatible", "body_preview": "", "progress": "", "completed": False}
+
             ws.send(json.dumps({"id":2,"method":"Runtime.evaluate","params":{"expression":
                 "document.body?.innerText?.substring(0,300) || ''"
             }}))
@@ -114,7 +119,10 @@ class DynamicSurveyEngine:
         const BODY = (document.body?.innerText || '').toLowerCase();
         let acts = [];
 
-        // Hilfsfunktion: umgebenden Text eines Elements finden
+        // 0. Fast platform detection: check if ANY form elements exist (<1s)
+        const hasElements = document.querySelectorAll('input[type="radio"],input[type="checkbox"],input[type="text"],input[type="number"],button').length;
+        if (hasElements === 0) return 'NO_ELEMENTS';
+
         function getContext(el) {
             let ctx = (el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').toLowerCase();
             let p = el;
@@ -265,9 +273,10 @@ class DynamicSurveyEngine:
 
     # ── AX-Weiter-Klick ─────────────────────────────────────────────────────
 
-    def _wait_and_click_continue_ax(self, pid, wid):
-        """Wartet auf 'Weiter'-Button im AX-Tree und klickt ihn."""
-        for _ in range(15):
+    def _wait_and_click_continue_ax(self, pid, wid, fast=False):
+        """Wartet auf 'Weiter'-Button im AX-Tree (0.3s Polling in fast mode)."""
+        delay = 0.3 if fast else 1.0
+        for _ in range(30 if fast else 15):
             tree = self.executor._cua("get_state", {"pid": pid, "window_id": wid})
             for line in tree.get("data",{}).get("tree_markdown","").split("\n"):
                 if "weiter" in line.lower() and "AXButton" in line:
@@ -276,7 +285,7 @@ class DynamicSurveyEngine:
                         self.executor.execute({"tool":"cua-touch","action":"click",
                             "params":{"element_index":int(m.group(1)),"pid":pid,"window_id":wid,"verify":True}})
                         return True
-            time.sleep(1)
+            time.sleep(delay)
         return False
 
     # ── Hilfsfunktionen ─────────────────────────────────────────────────────
