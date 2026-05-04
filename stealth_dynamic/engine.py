@@ -298,25 +298,24 @@ class DynamicSurveyEngine:
                 const t = btn.textContent.trim();
                 if (t && !t.includes('Weiter') && !t.includes('\u2192') && acts.length === 0) {
                     btn.click(); acts.push('btn:' + t.substring(0,20));
-                    // Klicke Weiter nach kurzer Pause
-                    setTimeout(() => {
-                        document.querySelectorAll('button').forEach(b => {
-                            if (/weiter|\u2192/.test(b.textContent)) b.click();
-                        });
-                    }, 300);
                 }
             });
         }
 
-        // 5. Weiter
-        const fwd = document.getElementById('forwardbutton')
-            || document.querySelector('input[type="submit"]:not([style*="-9000"])')
-            || document.querySelector('button[type="submit"]');
-        if (fwd) {
-            fwd.click();
-            return 'OK ' + acts.length + ': ' + acts.slice(0,5).join(', ');
+        // 5. 🔥 IMMER Weiter klicken (nicht conditional!)
+        const fwdEls = document.querySelectorAll('button, input[type="submit"]');
+        let forwarded = false;
+        fwdEls.forEach(el => {
+            const t = (el.textContent || el.value || '').toLowerCase().trim();
+            if (/weiter|→|next|submit|nächste|continue/i.test(t) && !forwarded) {
+                el.click(); forwarded = true;
+            }
+        });
+        if (!forwarded) {
+            const fwd = document.getElementById('forwardbutton');
+            if (fwd) { fwd.click(); forwarded = true; }
         }
-        return 'ERR: no forward button';
+        return 'OK ' + acts.length + ': ' + acts.slice(0,5).join(', ') + (forwarded ? ' fwd' : ' nofwd');
     })()
     """
 
