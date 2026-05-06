@@ -18,7 +18,7 @@
 | Command | Grund |
 |---------|-------|
 | webauto-nodriver | ABSOLUT BANNED |
-| skylight-cli | DEPRECATED |
+| skylight-cli | RE-ACTIVATED (snapshot-compact + batch = PRIMARY) |
 | CDP Navigation | BANNED |
 | pyautogui / pynput | BANNED |
 
@@ -26,3 +26,4 @@
 
 **→ Zugehörige Commands**: [banned.md](banned.md) | [sinrules.md](sinrules.md)
 **Letztes Update**: 2026-05-05
+> Updated 2026-05-06 per learn.md — see SIN-CLIs/stealth-runner
